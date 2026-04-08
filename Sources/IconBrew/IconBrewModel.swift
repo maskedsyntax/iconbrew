@@ -39,21 +39,20 @@ final class IconBrewModel: ObservableObject {
         isProcessing = true
         status = "Generating .icns…"
 
-        Task.detached { [weak self] in
+        // The model is @MainActor, so an unstructured Task inherits MainActor.
+        // The blocking IconMaker work runs on a detached child Task; results
+        // come back to MainActor automatically when we await its value.
+        Task {
             do {
-                let icns = try IconMaker.makeIcns(source: input, outputDir: outDir)
-                await MainActor.run {
-                    guard let self else { return }
-                    self.resultIcns = icns
-                    self.isProcessing = false
-                    self.status = "Done: \(icns.path)"
-                }
+                let icns = try await Task.detached {
+                    try IconMaker.makeIcns(source: input, outputDir: outDir)
+                }.value
+                self.resultIcns = icns
+                self.isProcessing = false
+                self.status = "Done: \(icns.path)"
             } catch {
-                await MainActor.run {
-                    guard let self else { return }
-                    self.isProcessing = false
-                    self.status = "Error: \(error.localizedDescription)"
-                }
+                self.isProcessing = false
+                self.status = "Error: \(error.localizedDescription)"
             }
         }
     }
